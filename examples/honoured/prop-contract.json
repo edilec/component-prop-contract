@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "1",
+  "version": "2.3.0",
+  "description": "The public surface of the two components callers depend on most.",
+  "components": [
+    {
+      "id": "Button",
+      "source": "src/Button.tsx",
+      "propsType": "ButtonProps",
+      "props": [
+        { "name": "label", "type": "string", "required": true },
+        { "name": "variant", "type": "'primary' | 'secondary'", "required": false },
+        { "name": "disabled", "type": "boolean", "required": false },
+        { "name": "icon", "required": false, "note": "Deliberately unconstrained: the node type is a framework detail." }
+      ],
+      "events": [
+        { "name": "onClick", "type": "(event: MouseEvent) => void", "required": false }
+      ]
+    },
+    {
+      "id": "Chip",
+      "source": "src/Chip.tsx",
+      "propsType": "ChipProps",
+      "argTypes": {
+        "label": { "type": { "name": "string", "required": true } },
+        "tone": { "type": { "name": "enum", "value": ["neutral", "danger"] } },
+        "onDismiss": { "type": { "name": "function" } }
+      }
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "1",
+  "version": "1.0.0",
+  "description": "A contract whose source uses syntax outside the recognised subset.",
+  "components": [
+    {
+      "id": "Panel",
+      "source": "src/Panel.tsx",
+      "propsType": "PanelProps",
+      "props": [
+        { "name": "title", "type": "string", "required": true },
+        { "name": "elevation", "type": "number", "required": false }
+      ],
+      "events": [
+        { "name": "onClose", "type": "() => void", "required": false }
+      ]
+    }
+  ]
+}

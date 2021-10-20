@@ -180,7 +180,10 @@ declaration.
   (`Z.tsx` before `a.tsx`; `onBlur` before `onblur`; `aria-label` before `ariaLabel`).
 - **Every untrusted string is sanitised** — component ids, member names, type text, file names,
   pointer segments and excerpts alike. C0, DEL, C1, U+2028/U+2029 and the bidi controls are all
-  removed, and a name that would render as nothing is refused rather than rendered blank.
+  removed, and a name that would render as nothing is refused rather than rendered blank —
+  **on both sides of the comparison.** One predicate decides what a name is, for the contract and
+  for a name read out of a TypeScript source, because a name only one side accepts is a member
+  that can never be matched. A source member this tool cannot name makes the run `incomplete`.
 - **A value that cannot be stringified does not cost the report.** `{"toString": {}}` in any
   field, including one read before any schema check, still produces a report on stdout.
 - **A parse failure never reproduces the document.** The helper recognises V8's quoting shape

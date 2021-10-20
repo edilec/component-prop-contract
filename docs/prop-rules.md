@@ -72,6 +72,13 @@ export type Name = { ... }
 with members of the form `[readonly] name[?]: <type>;`, where `name` is an identifier or a
 quoted string and `<type>` is any balanced run of text on one line.
 
+A member name is read the same way from either document. `isUsableName` is one function, asked
+about the contract's names and the source's alike, because the two are compared against each
+other: a name only one side accepts is a member that can never be matched. A source member named
+with bidi controls used to reach the public surface and be reported as an addition with an empty
+quoted name, at exit 0, while the contract refused the identical string — an unknown reported as a
+pass, arriving through the half of the comparison nobody was guarding.
+
 Refused, each named in the finding:
 
 | Construct | Why it cannot be read |
@@ -82,6 +89,7 @@ Refused, each named in the finding:
 | an index or call or construct signature | it declares an open-ended set of members rather than named ones |
 | a method signature | outside the subset |
 | a member with no type annotation | there is no type to compare |
+| a member whose name this tool cannot use on both sides | longer than 200 characters, carrying whitespace, or rendering as nothing once control, separator and bidi characters are removed. The contract side refuses the identical name, so the member could never be declared and never be matched — see below |
 | a member whose type text spans a top-level line break | indistinguishable from a missing `;` between two members — see below |
 | a declaration appearing twice | declaration merging; the surface is the union |
 | an unterminated string or block comment, unbalanced brackets, a template literal with a substitution | the source cannot be masked safely |

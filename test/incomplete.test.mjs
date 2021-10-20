@@ -155,6 +155,71 @@ describe('a source that did not arrive', () => {
     assert.equal(code, 2)
     assert.ok(report.findings.some((finding) => finding.ruleId === 'source-path-invalid'))
   })
+
+  /**
+   * The recogniser's own refusals, driven through the real CLI.
+   *
+   * `test/typescript.test.mjs` asserts the reason each one records; that is a
+   * unit test of a function. What decides whether an unread surface reports a
+   * pass is the EXIT CODE, and each case below is a member this tool could not
+   * classify -- so the component must not be compared and the run must not be
+   * green. Each of these guards survived a deletion with the whole suite
+   * passing before these tests existed.
+   */
+  const UNREAD_MEMBER_CASES = [
+    {
+      name: 'a member whose name is not an identifier',
+      source: 'export interface ButtonProps {\n  label: string;\n  3d: number;\n}\n',
+      reason: /a member whose name could not be read/,
+    },
+    {
+      name: 'a member with an empty type annotation',
+      source: 'export interface ButtonProps {\n  label: string;\n  other: ;\n}\n',
+      reason: /a member with no type annotation/,
+    },
+    {
+      name: 'a member with no type annotation at all',
+      source: 'export interface ButtonProps {\n  label: string;\n  other;\n}\n',
+      reason: /a member with no type annotation/,
+    },
+  ]
+
+  for (const item of UNREAD_MEMBER_CASES) {
+    test(`${item.name} makes the run incomplete and compares nothing`, async () => {
+      const root = await track(await makeCase(
+        contractDocument({
+          components: [componentEntry({
+            props: [{ name: 'label', type: 'string', required: true }],
+            events: [],
+          })],
+        }),
+        item.source,
+      ))
+      const { code, report } = await reportFor(root)
+      assert.equal(code, 2, 'a half-established surface is never a pass')
+      assert.equal(report.status, 'incomplete')
+      const finding = report.findings.find((entry) => entry.ruleId === 'source-unsupported-syntax')
+      assert.ok(finding, `expected source-unsupported-syntax, got ${report.findings.map((entry) => entry.ruleId).join(', ')}`)
+      assert.match(finding.message, item.reason)
+      assert.match(finding.message, /at line 3/)
+      assertNothingCompared(report)
+    })
+  }
+
+  test('and the same sources with the offending member removed are compared and pass', async () => {
+    const root = await track(await makeCase(
+      contractDocument({
+        components: [componentEntry({
+          props: [{ name: 'label', type: 'string', required: true }],
+          events: [],
+        })],
+      }),
+      'export interface ButtonProps {\n  label: string;\n}\n',
+    ))
+    const { code, report } = await reportFor(root)
+    assert.equal(code, 0, 'the guard refuses the unreadable member, not every source')
+    assert.equal(report.summary.componentsCompared, 1)
+  })
 })
 
 describe('a budget that expires mid-run leaves nothing looking compared', () => {

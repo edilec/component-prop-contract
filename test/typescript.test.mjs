@@ -124,6 +124,10 @@ describe('what the subset refuses, by name', () => {
     ['call-signature', 'export interface P { (x: number): void; a: string; }'],
     ['method-signature', 'export interface P { render(): void; a: string; }'],
     ['member-without-type', 'export interface P { a; b: string; }'],
+    ['member-without-type', 'export interface P { a: ; b: string; }'],
+    ['unreadable-member-name', 'export interface P { 3d: number; b: string; }'],
+    ['unreadable-member-name', 'export interface P { `a`: string; b: string; }'],
+    ['member-name-unusable', "export interface P { 'a b': string; }"],
     ['member-not-terminated', 'export interface P {\n  a: string\n  b: string;\n}'],
     ['unbalanced-type', 'export interface P { a: Array<string; }'],
   ]

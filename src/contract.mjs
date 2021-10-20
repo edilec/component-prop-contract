@@ -9,7 +9,15 @@
  */
 
 import { isEventName, normaliseType, splitUnion } from './typescript.mjs'
-import { excerpt, isUsableText } from './text.mjs'
+import { excerpt } from './text.mjs'
+
+/**
+ * The name predicate lives in `text.mjs`, beside the sanitiser it is defined in
+ * terms of, and is re-exported here because this is where the contract's own
+ * shapes are described. The TypeScript recogniser imports the SAME function,
+ * so the two sides of the comparison cannot drift apart about what a name is.
+ */
+export { MAX_NAME_CHARS, isUsableName } from './text.mjs'
 
 /** Top-level fields the contract may declare. */
 export const ALLOWED_CONTRACT_FIELDS = Object.freeze([
@@ -30,15 +38,28 @@ export const ALLOWED_ARGTYPE_FIELDS = Object.freeze(['description', 'name', 'typ
 /** Fields one `argTypes` entry's `type` may carry. */
 export const ALLOWED_ARGTYPE_TYPE_FIELDS = Object.freeze(['name', 'required', 'value'])
 
-export const MAX_NAME_CHARS = 200
-
 /** A `major.minor.patch` contract version. Anything looser is refused. */
 export const VERSION_PATTERN = /^\d+\.\d+\.\d+$/
 
-/** A member name, as this tool will accept it from either document. */
-export function isUsableName(value) {
-  return isUsableText(value, MAX_NAME_CHARS) && !/\s/.test(value)
-}
+/**
+ * The `type.name` values an `argTypes` export may declare.
+ *
+ * A closed vocabulary rather than "anything else places no requirement": a
+ * one-character typo in `string` would otherwise silently downgrade a real
+ * type requirement to none and take the run green, which is exactly the shape
+ * the house contract forbids for a configuration key. The names that carry no
+ * comparable requirement are listed HERE too, so an export that legitimately
+ * says `object` is accepted while `strnig` is refused.
+ */
+export const ARGTYPE_TYPE_NAMES = Object.freeze([
+  'array', 'boolean', 'enum', 'function', 'intersection', 'number', 'object',
+  'other', 'string', 'symbol', 'union',
+])
+
+/** The `type.name` values that place a comparable requirement on the type. */
+export const ARGTYPE_COMPARED_TYPE_NAMES = Object.freeze([
+  'boolean', 'enum', 'function', 'number', 'string', 'symbol',
+])
 
 /**
  * How a declared type is compared against the type the source declares.

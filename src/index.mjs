@@ -170,6 +170,7 @@ export const UNSUPPORTED_REASONS = Object.freeze({
   'generic-declaration': 'a generic declaration, whose members mean different things for different type arguments',
   'index-signature': 'an index signature, which declares an open-ended set of members rather than named ones',
   'member-not-terminated': 'a member whose type text spans a line break at the top level, which is indistinguishable from a missing ";" between two members',
+  'member-name-unusable': 'a member name longer than 200 characters, carrying whitespace, or rendering as nothing once control, separator and bidi characters are removed',
   'member-without-type': 'a member with no type annotation',
   'method-signature': 'a method signature',
   'template-substitution': 'a template literal carrying a substitution',

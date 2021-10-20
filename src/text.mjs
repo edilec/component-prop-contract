@@ -149,6 +149,48 @@ export function isUsableText(value, limit = 200) {
   return excerpt(value, limit).length > 0
 }
 
+export const MAX_NAME_CHARS = 200
+
+/**
+ * A member name or component id, as this tool will accept it -- from the
+ * contract and from a TypeScript source ALIKE.
+ *
+ * One predicate, applied on both sides, because the two sides are compared
+ * against each other. A source member named only of bidi controls used to be
+ * admitted to the public surface and rendered as `""` in the report, while the
+ * contract side refused the identical string: the member could never be
+ * declared, so it could never be satisfied, and the run still exited 0. A name
+ * this predicate refuses is a name no finding could anchor and no contract
+ * could name, whichever document it arrived in.
+ */
+export function isUsableName(value) {
+  return isUsableText(value, MAX_NAME_CHARS) && !/\s/.test(value)
+}
+
+/**
+ * Describe an untrusted value for a message: its text when it renders as
+ * something, its SHAPE when it does not.
+ *
+ * `"${excerpt(value)}"` is the obvious spelling and it is wrong for two
+ * values. An object carrying a non-callable `toString` is described rather
+ * than reproduced -- `renderable` already does that -- but a string made only
+ * of characters the sanitiser strips renders as the empty string, and a
+ * diagnostic reading `the document declares ""` tells a reader nothing about
+ * what was really there. Validate what will be RENDERED: if the rendering says
+ * nothing, say what the value was instead.
+ */
+export function describeValue(value, limit = 60) {
+  if (typeof value === 'string') {
+    const rendered = excerpt(value, limit)
+    if (rendered.length > 0) return `the string "${rendered}"`
+    return `a string of ${value.length} character(s) that render as nothing once control, separator and bidi characters are removed`
+  }
+  if (Array.isArray(value)) return 'an array'
+  if (value === null) return 'null'
+  if (typeof value === 'object') return 'an object'
+  return `a ${typeof value}`
+}
+
 /** Escape one path segment for a JSON Pointer, per RFC 6901, then sanitise it. */
 export function escapePointerSegment(segment) {
   return excerpt(renderable(segment).replaceAll('~', '~0').replaceAll('/', '~1'), 120)

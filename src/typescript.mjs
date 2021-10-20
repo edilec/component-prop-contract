@@ -29,9 +29,14 @@
  *     intersection, a mapped type, `Omit<...>`) -- same reason
  *   - an index or call signature, a method signature, a construct signature
  *   - a member with no type annotation
+ *   - a member whose name this tool could not use on both sides of the
+ *     comparison: too long, carrying whitespace, or rendering as nothing once
+ *     control, separator and bidi characters are removed
  *   - a member that is not terminated by `;` or `,` before the next one
  *   - an unterminated string or comment, or unbalanced brackets
  */
+
+import { isUsableName } from './text.mjs'
 
 const IDENTIFIER = /[A-Za-z_$][A-Za-z0-9_$]*/y
 
@@ -289,6 +294,24 @@ function readMembers(source, structure, code, comments, open, close, limits) {
       }
       name = identifier[0]
       index += identifier[0].length
+    }
+
+    /**
+     * The name was READ. Whether it can be USED is a separate question, and
+     * the answer has to be the same one the contract side gives -- the two are
+     * compared against each other, so a name only one side accepts can never
+     * be matched. `isUsableName` is the single predicate both sides ask.
+     *
+     * A name made of bidi controls used to reach the public surface here and
+     * render as `""` in the report, while the contract refused the identical
+     * string: an addition nobody could ever declare, at exit 0.
+     */
+    if (!isUsableName(name)) {
+      // `name` is deliberately not carried: it is the thing that cannot be
+      // rendered, so the finding describes it by line rather than repeating it.
+      unsupported.push({ reason: 'member-name-unusable', line: lineOf(source, memberStart) })
+      index = skipToTerminator(structure, index, close) ?? close
+      continue
     }
 
     index = skipSpace(structure, index)

@@ -124,6 +124,80 @@ describe('a name that renders as nothing is refused, not accepted and then rende
     assert.equal(code, 1)
     assert.ok(JSON.parse(stdout).findings.some((finding) => finding.ruleId === 'member-invalid'))
   })
+
+  /**
+   * The same rule, on the OTHER side of the comparison.
+   *
+   * The contract side refused these names from the first release; the source
+   * side did not, so a member named with U+0001 U+0085 U+200E reached the
+   * public surface, was reported as an addition with an empty quoted name, and
+   * the run exited 0. The honesty rule has to hold on both sides of a
+   * comparison or it holds on neither: a member only one side can name is a
+   * member that can never be matched.
+   */
+  test('a SOURCE member name that renders as nothing is refused, not admitted blank', async () => {
+    const invisible = `${String.fromCharCode(0x01)}${String.fromCharCode(0x85)}${String.fromCharCode(0x200e)}`
+    const root = await makeRoot({
+      'prop-contract.json': contractDocument({
+        components: [componentEntry({
+          props: [{ name: 'label', type: 'string', required: true }],
+          events: [],
+        })],
+      }),
+      'src/Button.tsx': `export interface ButtonProps {\n  label: string;\n  '${invisible}': number;\n}\n`,
+    })
+    roots.push(root)
+
+    const { code, stdout } = await runCli(['--root', root, '--json'])
+    const report = JSON.parse(stdout)
+    assert.equal(code, 2, 'a surface this tool cannot fully name is not a pass')
+    assert.equal(report.status, 'incomplete')
+    assert.deepEqual(
+      report.findings.map((finding) => finding.ruleId),
+      ['source-unsupported-syntax'],
+      'the member is refused by name rather than rendered as an empty identifier',
+    )
+    assert.match(report.findings[0].message, /at line 3/)
+    assert.equal(report.summary.publicMembers, 0, 'and nothing of that surface is claimed')
+    assert.equal(report.summary.membersAdded, 0)
+    for (const finding of report.findings) {
+      assert.equal(/"" /.test(finding.message), false, 'no finding names an empty identifier')
+    }
+  })
+
+  test('a SOURCE member name carrying whitespace is refused, because the contract could never declare it', async () => {
+    const root = await makeRoot({
+      'prop-contract.json': contractDocument({
+        components: [componentEntry({
+          props: [{ name: 'label', type: 'string', required: true }],
+          events: [],
+        })],
+      }),
+      'src/Button.tsx': "export interface ButtonProps {\n  label: string;\n  'a b': number;\n}\n",
+    })
+    roots.push(root)
+
+    const { code, stdout } = await runCli(['--root', root, '--json'])
+    assert.equal(code, 2)
+    assert.deepEqual(JSON.parse(stdout).findings.map((finding) => finding.ruleId), ['source-unsupported-syntax'])
+  })
+
+  test('and an ordinary source member name is still read, so the guard is not refusing everything', async () => {
+    const root = await makeRoot({
+      'prop-contract.json': contractDocument({
+        components: [componentEntry({
+          props: [{ name: 'label', type: 'string', required: true }],
+          events: [],
+        })],
+      }),
+      'src/Button.tsx': "export interface ButtonProps {\n  label: string;\n  'aria-label'?: string;\n}\n",
+    })
+    roots.push(root)
+
+    const { code, stdout } = await runCli(['--root', root, '--json'])
+    assert.equal(code, 0)
+    assert.equal(JSON.parse(stdout).summary.publicMembers, 2)
+  })
 })
 
 describe('an unknown field name is untrusted too', () => {

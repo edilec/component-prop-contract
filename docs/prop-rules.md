@@ -126,7 +126,7 @@ avoid, so both forms are now refused and reported.
 | `component-invalid` | error | A component entry is not an object, or its `id`, `propsType` or `note` is unusable. |
 | `component-unknown-field` | error | A component declares a field this build does not know. |
 | `component-id-duplicate` | error | Two entries share an id, so neither surface is authoritative. |
-| `member-invalid` | error | A declared member is malformed: no usable name, no boolean `required`, an unusable `type` or `note`, or an `argTypes` entry that is not an object. |
+| `member-invalid` | error | A declared member is malformed: no usable name, no boolean `required`, an unusable `type`, `note`, `description` or `name`, an `argTypes` entry that is not an object, a `type.name` outside the vocabulary below, or an `enum` whose `value` list is absent, empty or carries something that is not usable text. |
 | `member-duplicate` | error | A member name appears more than once across `props`, `events` and `argTypes`. |
 | `member-misclassified` | error | A member is declared under `props` whose name is an event, or the reverse. One rule decides this for the contract and the source alike. |
 | `no-components-declared` | error | The contract governs no components, so the run would report a pass having checked nothing. |
@@ -147,12 +147,35 @@ or as `argTypes`, the shape a story-metadata export produces:
 ```
 
 The `argTypes` spelling carries less: a kind rather than type text. The comparison is narrowed
-to match rather than widened to pretend — `string`, `number`, `boolean` and `symbol` compare as
-those exact type names, `function` compares as "is this callable at all", `enum` compares as a
-set of string literals, and anything else places no requirement and is reported as
-`prop-type-unconstrained`. `required` defaults to `false` when absent, which is what a story
-export means by omitting it; in the direct spelling `required` is mandatory, because whether a
-caller must pass a member is exactly what this tool compares.
+to match rather than widened to pretend.
+
+`type.name` is a **closed vocabulary**, and both halves of it are written down:
+
+| `type.name` | compared as |
+| --- | --- |
+| `string`, `number`, `boolean`, `symbol` | that exact type name |
+| `function` | "is this callable at all" — `function` cannot be compared against `(event: MouseEvent) => void` as text |
+| `enum` | a set of string literals, taken from `value` |
+| `array`, `intersection`, `object`, `other`, `union` | nothing. The kind carries no requirement this tool can check, and `prop-type-unconstrained` says so at `info` |
+
+A `type.name` outside that list is `member-invalid`, not "no requirement". The two are
+indistinguishable in a document and one of them is a typo: `{"type": {"nmae": "string"}}` was
+refused at exit 1 from the first release, while `{"type": {"name": "strnig"}}` silently placed no
+requirement at all and the run went green — the same mistake one character to the right. The
+names that legitimately carry no requirement are therefore *in* the vocabulary, so an export that
+really says `object` is accepted and only a name nobody meant is refused.
+
+An `enum` states its values or states nothing usable: `value` must be an array of at least one
+usable string. A non-string in that list used to degrade the entire requirement to none, and a
+value made only of stripped characters used to be compared and then rendered as a blank quoted
+literal in the evidence. Both are `member-invalid`.
+
+`description` and `name` on an `argTypes` entry are checked like every other optional field: if
+present, they must be text that is still there after sanitising.
+
+`required` defaults to `false` when absent, which is what a story export means by omitting it; in
+the direct spelling `required` is mandatory, because whether a caller must pass a member is
+exactly what this tool compares.
 
 Type text is compared after normalisation: whitespace around punctuation is removed, and a
 top-level union is compared as a **set**, so `'a' | 'b'` and `'b' | 'a'` are the same type.

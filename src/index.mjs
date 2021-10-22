@@ -44,7 +44,8 @@ import { performance } from 'node:perf_hooks'
 
 import {
   ALLOWED_ARGTYPE_FIELDS, ALLOWED_ARGTYPE_TYPE_FIELDS, ALLOWED_COMPONENT_FIELDS,
-  ALLOWED_CONTRACT_FIELDS, ALLOWED_MEMBER_FIELDS, MAX_NAME_CHARS, VERSION_PATTERN,
+  ALLOWED_CONTRACT_FIELDS, ALLOWED_MEMBER_FIELDS, ARGTYPE_COMPARED_TYPE_NAMES, ARGTYPE_TYPE_NAMES,
+  MAX_NAME_CHARS, VERSION_PATTERN,
   declaredMember, describeMatcher, exactMatcher, isUsableName, isUsableSourcePath,
   matcherFromArgType, matchesType,
 } from './contract.mjs'
@@ -52,13 +53,14 @@ import {
   DEFAULT_SOURCE_LIMITS, isEventName, isPrivateMember, normaliseType, readDeclaration,
 } from './typescript.mjs'
 import {
-  byCodeUnit, decodeUtf8, escapePointerSegment, excerpt, hasForbiddenCharacter, isPlainObject,
-  isUsableText, parseFailureDetail, renderable,
+  byCodeUnit, decodeUtf8, describeValue, escapePointerSegment, excerpt, hasForbiddenCharacter,
+  isPlainObject, isUsableText, parseFailureDetail, renderable,
 } from './text.mjs'
 
 export {
   ALLOWED_ARGTYPE_FIELDS, ALLOWED_ARGTYPE_TYPE_FIELDS, ALLOWED_COMPONENT_FIELDS,
-  ALLOWED_CONTRACT_FIELDS, ALLOWED_MEMBER_FIELDS, MAX_NAME_CHARS, VERSION_PATTERN,
+  ALLOWED_CONTRACT_FIELDS, ALLOWED_MEMBER_FIELDS, ARGTYPE_COMPARED_TYPE_NAMES, ARGTYPE_TYPE_NAMES,
+  MAX_NAME_CHARS, VERSION_PATTERN,
   declaredMember, describeMatcher, exactMatcher, isUsableName, isUsableSourcePath,
   matcherFromArgType, matchesType,
 } from './contract.mjs'
@@ -67,8 +69,8 @@ export {
   normaliseType, readDeclaration, splitUnion,
 } from './typescript.mjs'
 export {
-  CONTROL_CLASSES, EXCERPT_LIMIT, byCodeUnit, decodeUtf8, escapePointerSegment, excerpt,
-  hasForbiddenCharacter, isPlainObject, isUsableText, parseFailureDetail, renderable,
+  CONTROL_CLASSES, EXCERPT_LIMIT, byCodeUnit, decodeUtf8, describeValue, escapePointerSegment,
+  excerpt, hasForbiddenCharacter, isPlainObject, isUsableText, parseFailureDetail, renderable,
 } from './text.mjs'
 
 export const TOOL_ID = 'component-prop-contract'
@@ -518,6 +520,26 @@ function readArgTypeMembers(run, entry, pointer, seen) {
     }
     checkUnknownFields(run, run.contractFile, declared, ALLOWED_ARGTYPE_FIELDS, 'member-invalid', memberPointer)
 
+    /**
+     * The two free-text fields of an `argTypes` entry are checked like every
+     * other optional field in this document. They were the only two that were
+     * not, and "optional" means the contract may omit the field -- not that
+     * anything at all may be written in it.
+     */
+    let usableFields = true
+    for (const field of ['description', 'name']) {
+      if (!Object.hasOwn(declared, field) || isUsableText(declared[field], 400)) continue
+      usableFields = false
+      usable = false
+      run.add({
+        pointer: `${memberPointer}/${field}`,
+        ruleId: 'member-invalid',
+        message: `The "argTypes" entry for "${excerpt(name, 80)}" declares "${field}" as ${describeValue(declared[field], 60)}, which is not usable text. An optional field that is present must say something.`,
+        suggestion: `Write "${field}" as a plain string, or omit it.`,
+      })
+    }
+    if (!usableFields) continue
+
     let required = false
     let matcher = { kind: 'none' }
     if (Object.hasOwn(declared, 'type')) {
@@ -543,6 +565,63 @@ function readArgTypeMembers(run, entry, pointer, seen) {
         })
         continue
       }
+
+      /**
+       * The type NAME is a closed vocabulary, not "anything else places no
+       * requirement".
+       *
+       * `{"name": "strnig"}` used to fall through to no requirement at all and
+       * the run went green, while the identical typo in the KEY of this same
+       * object was refused at exit 1. That is defect class 6 of the house
+       * contract -- a one-character typo turning a real failure into a green
+       * run -- so the names that carry no comparable requirement are listed
+       * too, and a name outside the list is refused rather than ignored.
+       */
+      if (Object.hasOwn(type, 'name') && !ARGTYPE_TYPE_NAMES.includes(type.name)) {
+        usable = false
+        run.add({
+          pointer: `${memberPointer}/type/name`,
+          ruleId: 'member-invalid',
+          message: `The "argTypes" entry for "${excerpt(name, 80)}" declares the type name ${describeValue(type.name, 60)}, which this build does not know. A name it does not know would place no requirement at all, so a typo would take the run green.`,
+          evidence: `known type names: ${ARGTYPE_TYPE_NAMES.join(', ')}`,
+          suggestion: `Use one of the known type names, or omit "type" to place no requirement on the type.`,
+        })
+        continue
+      }
+
+      /**
+       * An enum's values are the requirement. A list carrying a non-string
+       * used to degrade the WHOLE requirement to none and pass; a value made
+       * only of stripped characters was accepted into the expected set and
+       * rendered as a blank quoted literal in the evidence.
+       */
+      if (type.name === 'enum') {
+        const values = Array.isArray(type.value) ? type.value : null
+        if (values === null || values.length === 0) {
+          usable = false
+          run.add({
+            pointer: `${memberPointer}/type/value`,
+            ruleId: 'member-invalid',
+            message: `The "argTypes" entry for "${excerpt(name, 80)}" declares the type name "enum" but "value" is ${values === null ? describeValue(type.value, 60) : 'an empty array'}. The values ARE the requirement, so an enum without them states nothing.`,
+            suggestion: 'List the allowed string literals in "value".',
+          })
+          continue
+        }
+        let usableValues = true
+        for (const [valueIndex, entry] of values.entries()) {
+          if (isUsableText(entry, 200)) continue
+          usableValues = false
+          usable = false
+          run.add({
+            pointer: `${memberPointer}/type/value/${valueIndex}`,
+            ruleId: 'member-invalid',
+            message: `The "argTypes" entry for "${excerpt(name, 80)}" lists ${describeValue(entry, 60)} among its enum values. Every value has to be text this report can name, or the requirement is compared against something a reader cannot see.`,
+            suggestion: 'Write each enum value as a plain string literal.',
+          })
+        }
+        if (!usableValues) continue
+      }
+
       required = type.required === true
       matcher = matcherFromArgType(type)
     }
@@ -1124,7 +1203,7 @@ async function readContractDocument(run, realRoot, name, file, limits) {
       // `toString` throws there, and this site is reached before any schema
       // check, so it would cost the whole report on any contract at all.
       ruleId: 'schema-version-unsupported',
-      message: `This build understands schemaVersion "${SUPPORTED_DOCUMENT_VERSION}"; the contract declares "${excerpt(document.schemaVersion, 40)}". It was not interpreted.`,
+      message: `This build understands schemaVersion "${SUPPORTED_DOCUMENT_VERSION}"; the contract declares ${describeValue(document.schemaVersion, 40)}. It was not interpreted.`,
       suggestion: 'Read the contract with a build that understands its schema version.',
     })
     return null

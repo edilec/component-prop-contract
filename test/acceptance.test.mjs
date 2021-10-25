@@ -194,6 +194,63 @@ describe('private implementation details are excluded', () => {
     assert.match(finding.message, /_renderCount/)
   })
 
+  /**
+   * WHICH member a marking applies to is the other half of the guarantee, and
+   * it was the unpinned half. Removing the check that nothing sits between the
+   * comment and the member made the marking leak onto every later member, so
+   * `label` silently left the public surface and the contract's own prop was
+   * reported missing -- the whole suite staying green throughout.
+   */
+  test('a marking applies to the member it precedes, and not to the one after that', async () => {
+    const root = await caseRoot(
+      contractDocument({
+        components: [componentEntry({
+          props: [{ name: 'label', type: 'string', required: true }],
+          events: [],
+        })],
+      }),
+      `export interface ButtonProps {
+  /** @internal */
+  hidden: string;
+  label: string;
+}
+`,
+    )
+    const { code, report } = await reportFor(root)
+    assert.equal(code, 0, 'label is public and matches the contract')
+    assert.equal(report.summary.privateMembersExcluded, 1, 'exactly one member is marked private')
+    assert.equal(report.summary.publicMembers, 1)
+    assert.equal(report.summary.membersMatched, 1)
+    const excluded = report.findings.filter((finding) => finding.ruleId === 'private-member-excluded')
+    assert.equal(excluded.length, 1)
+    assert.match(excluded[0].message, /"hidden"/)
+    assert.equal(
+      report.findings.some((finding) => finding.ruleId === 'prop-missing'),
+      false,
+      'the marking did not leak onto the member after it',
+    )
+  })
+
+  test('a marking separated from the member by other code does not apply to it', async () => {
+    const root = await caseRoot(
+      contractDocument({
+        components: [componentEntry({
+          props: [{ name: 'label', type: 'string', required: true }],
+          events: [],
+        })],
+      }),
+      `export interface ButtonProps {
+  /** @internal */
+  hidden: string; label: string;
+}
+`,
+    )
+    const { code, report } = await reportFor(root)
+    assert.equal(code, 0)
+    assert.equal(report.summary.privateMembersExcluded, 1)
+    assert.equal(report.summary.publicMembers, 1)
+  })
+
   test('a props type that is declared but not exported is not a public surface', async () => {
     const root = await caseRoot(contractDocument(), `interface ButtonProps {
   label: string;

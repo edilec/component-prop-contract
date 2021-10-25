@@ -82,6 +82,14 @@ The break, as it reaches stdout:
 }
 ```
 
+**`file` and `pointer` name two different documents, on purpose.** `location.file` is the
+TypeScript source the observation is about; `location.pointer` is always a JSON Pointer into the
+contract, naming the field that states the requirement. A source has no field path worth
+pointing at and the contract has no line worth reading, so each finding carries the useful half
+of both. A test resolves every emitted pointer against the contract document, so a consumer can
+rely on it. The human summary on stderr prints them with `<- contract` between them, because
+concatenated they read as a filesystem path and are not one.
+
 ## The contract
 
 ```json

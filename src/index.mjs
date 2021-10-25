@@ -1364,7 +1364,16 @@ export function exitCodeFor(report) {
 
 const SEVERITY_MARK = Object.freeze({ error: 'ERROR  ', warning: 'WARN   ', info: 'INFO   ' })
 
-/** The human summary. It goes to stderr; stdout carries the JSON and nothing else. */
+/**
+ * The human summary. It goes to stderr; stdout carries the JSON and nothing
+ * else.
+ *
+ * `file` and `pointer` are printed with a separator between them because they
+ * name DIFFERENT documents: the file is the TypeScript source the observation
+ * is about, and the pointer is the place in the contract that states the
+ * requirement. Concatenating them produced `src/Chip.tsx/components/1/argTypes/tone`,
+ * which reads as a filesystem path and is not one.
+ */
 export function formatReport(report) {
   const summary = report.summary
   const lines = []
@@ -1380,7 +1389,9 @@ export function formatReport(report) {
     + `${summary.privateMembersExcluded} private member(s) excluded`,
   )
   for (const finding of report.findings) {
-    const where = finding.location.pointer === '' ? finding.location.file : `${finding.location.file}${finding.location.pointer}`
+    const where = finding.location.pointer === ''
+      ? finding.location.file
+      : `${finding.location.file}  <- contract ${finding.location.pointer}`
     lines.push(`  ${SEVERITY_MARK[finding.severity]}${finding.ruleId}  ${where}`)
     lines.push(`         ${finding.message}`)
   }

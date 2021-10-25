@@ -82,7 +82,41 @@ describe('findings sort by code unit, not by collation', () => {
     assert.equal(files[0], 'Z.tsx', 'Z sorts before a by code unit; a collator would put it last')
   })
 
-  test('several findings sharing one pointer order by message, which is by member name', async () => {
+  test('several findings sharing one pointer order by message, not by the order they were emitted', async () => {
+    // The `message` key is the fourth and last, and it only shows itself where
+    // emission order and message order DISAGREE. Every earlier attempt at this
+    // test used findings the emission loop had already sorted by name, so
+    // `Array.prototype.sort` being stable made the assertion pass with the key
+    // removed. Private members are emitted in SOURCE order, so declaring
+    // `_zeta` before `_alpha` makes the two orders differ.
+    const { report: emitted } = await report({
+      'prop-contract.json': contractDocument({
+        components: [componentEntry({
+          props: [{ name: 'label', type: 'string', required: true }],
+          events: [],
+        })],
+      }),
+      'src/Button.tsx': `export interface ButtonProps {
+  label: string;
+  _zeta?: string;
+  _alpha?: string;
+}
+`,
+    })
+
+    const excluded = emitted.findings.filter((finding) => finding.ruleId === 'private-member-excluded')
+    assert.equal(excluded.length, 2)
+    assert.equal(
+      new Set(excluded.map((finding) => finding.location.pointer)).size,
+      1,
+      'both findings share one pointer, so only the message can order them',
+    )
+    assert.match(excluded[0].message, /"_alpha"/, 'the message key orders these, not the source order they were read in')
+    assert.match(excluded[1].message, /"_zeta"/)
+    assert.deepEqual(excluded.map((finding) => finding.message), [...excluded.map((finding) => finding.message)].sort(byCodeUnit))
+  })
+
+  test('several added props sharing one pointer are listed in code-unit order', async () => {
     const { report: emitted } = await report({
       'prop-contract.json': contractDocument({
         components: [componentEntry({

@@ -13,6 +13,14 @@ below and asserts the process exit code.
 `error` fails the run (exit 1). `warning` and `info` are reported and do not change the verdict.
 Rules marked **incomplete** also mark the run incomplete, which is exit 2 and never a pass.
 
+## Where a finding points
+
+`location.file` is the file the observation is about. `location.pointer` is **always a JSON
+Pointer into the contract document**, whatever `location.file` names — for a comparison finding
+those are two different documents, because the source has no field path to cite and the contract
+has no line a reader wants. Pointer segments are escaped per RFC 6901 (`~` becomes `~0`, `/`
+becomes `~1`), so a field or `argTypes` key carrying either character still resolves.
+
 ## What changed
 
 | ruleId | severity | fires when |

@@ -482,6 +482,46 @@ describe('identity fields', () => {
     assert.equal(code, 1)
   })
 
+  /**
+   * The "no whitespace" half of `isUsableName` is stated in three user-facing
+   * error messages and had no test. It is also the only thing refusing a name
+   * that carries an embedded control character: `isUsableText` would SANITISE
+   * such a name to a non-empty string rather than refuse it, so the report
+   * would name a member the source cannot possibly declare.
+   */
+  test('a member name carrying whitespace is refused, on either side of the comparison', async () => {
+    for (const name of ['a b', 'a\tb', `a${String.fromCharCode(0x0a)}b`, ' leading', 'trailing ']) {
+      const { code, report } = await reportFor(await caseRoot(oneProp({ name, type: 'string', required: true }), BUTTON_SOURCE))
+      assert.equal(code, 1, `${JSON.stringify(name)} was accepted as a member name`)
+      const finding = report.findings.find((entry) => entry.ruleId === 'member-invalid')
+      assert.ok(finding)
+      assert.match(finding.message, /no whitespace/)
+    }
+  })
+
+  test('a component id carrying whitespace is refused too', async () => {
+    const { code, report } = await reportFor(await caseRoot(
+      contractDocument({ components: [componentEntry({ id: 'My Button' })] }),
+      BUTTON_SOURCE,
+    ))
+    assert.equal(code, 1)
+    assert.ok(report.findings.some((finding) => finding.ruleId === 'component-invalid'))
+    assert.equal(report.summary.components, 0)
+  })
+
+  test('and a hyphenated or camel-cased name is accepted, so the guard is not refusing everything', async () => {
+    const { code } = await reportFor(await caseRoot(
+      contractDocument({
+        components: [componentEntry({
+          props: [{ name: 'label', type: 'string', required: true }],
+          events: [],
+        })],
+      }),
+      "export interface ButtonProps {\n  label: string;\n  'aria-label'?: string;\n  dataTestId?: string;\n}\n",
+    ))
+    assert.equal(code, 0)
+  })
+
   test('a contract version that is not major.minor.patch is refused', async () => {
     for (const version of ['2', '2.3', 'v2.3.0', '2.3.0-beta', 4]) {
       const root = await caseRoot(contractDocument({ version }), BUTTON_SOURCE)

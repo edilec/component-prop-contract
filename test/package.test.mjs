@@ -7,15 +7,46 @@
 
 import assert from 'node:assert/strict'
 import { access, readFile, readdir } from 'node:fs/promises'
-import { basename, join } from 'node:path'
-import { describe, test } from 'node:test'
+import { basename, join, relative } from 'node:path'
+import { after, describe, test } from 'node:test'
 
 import { TOOL_ID } from '../src/index.mjs'
-import { PROJECT_ROOT, runCli } from './support.mjs'
+import { PROJECT_ROOT, makeRoot, removeRoot, runCli } from './support.mjs'
+
+const roots = []
+after(async () => { await Promise.all(roots.map(removeRoot)) })
 
 async function manifest() {
   return JSON.parse(await readFile(join(PROJECT_ROOT, 'package.json'), 'utf8'))
 }
+
+/** Every text file in the working tree, skipping build output and version control. */
+async function treeFiles(directory = PROJECT_ROOT, found = []) {
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    if (entry.name === '.git' || entry.name === 'node_modules' || entry.name.startsWith('.DS_')) continue
+    const full = join(directory, entry.name)
+    if (entry.isDirectory()) {
+      await treeFiles(full, found)
+      continue
+    }
+    if (entry.name.endsWith('.tgz')) continue
+    found.push(full)
+  }
+  return found
+}
+
+/**
+ * The shapes a file uses to attach a NAME to an authorship claim.
+ *
+ * Deliberately narrow: `AUTHORS OR COPYRIGHT HOLDERS` in the MIT warranty
+ * clause attaches no name to anybody, and a test that flagged it would be
+ * noise rather than a check. Each pattern captures the name being claimed.
+ */
+const AUTHORSHIP_CLAIMS = [
+  /Copyright \(c\)\s*\d{4}\s*(.+)$/,
+  /^\s*"author":\s*"(.+)",?$/,
+  /^\s*(?:Co-authored-by|Signed-off-by|Author|Maintainer):\s*(.+)$/i,
+]
 
 describe('identity', () => {
   test('TOOL_ID equals the directory name', () => {
@@ -110,8 +141,71 @@ describe('documentation matches behaviour', () => {
     }
   })
 
+  /**
+   * The body has to scan the tree, because the title says it does.
+   *
+   * The previous version of this test asserted one field of package.json and
+   * was named as though it had walked every file. Nothing in the tree was
+   * wrong -- the assertion simply could not have found out. An assertion that
+   * cannot fail for the reason its name gives is not a test.
+   */
   test('nothing in the tree claims an author it does not have', async () => {
-    const pkg = await manifest()
-    assert.equal(pkg.author, 'Edilec Private Limited')
+    const files = await treeFiles()
+    assert.ok(files.length > 10, 'the scan walked the tree rather than nothing')
+
+    const claims = []
+    for (const file of files) {
+      let text
+      try {
+        text = await readFile(file, 'utf8')
+      } catch {
+        continue
+      }
+      for (const line of text.split('\n')) {
+        for (const pattern of AUTHORSHIP_CLAIMS) {
+          const match = pattern.exec(line)
+          if (match === null) continue
+          claims.push({ file: relative(PROJECT_ROOT, file), claimed: match[1].trim() })
+        }
+      }
+    }
+
+    assert.ok(claims.length >= 2, `expected the licence and the manifest to claim an author, found ${claims.length}`)
+    for (const claim of claims) {
+      assert.ok(
+        claim.claimed.includes('Edilec Private Limited'),
+        `${claim.file} attributes this work to "${claim.claimed}"`,
+      )
+    }
+  })
+
+  test('every exit code the README documents is one the tool can produce', async () => {
+    const readme = await readFile(join(PROJECT_ROOT, 'README.md'), 'utf8')
+    const table = readme.slice(readme.indexOf('## Exit codes'))
+    const documented = [...table.matchAll(/^\| `(\d)` \|/gm)].map((match) => Number(match[1]))
+    assert.deepEqual(documented, [0, 1, 2], 'the README documents exactly these three')
+
+    const produced = new Set()
+    for (const example of ['honoured', 'broken', 'unsupported']) {
+      const { code } = await runCli(['--root', join(PROJECT_ROOT, 'examples', example), '--json'])
+      produced.add(code)
+    }
+    // And the other shape of exit 2: a configuration error, with empty stdout.
+    const bad = await runCli(['--root', PROJECT_ROOT, '--nonsense'])
+    produced.add(bad.code)
+    assert.equal(bad.stdout, '', 'a run that never had a subject reports nothing')
+
+    for (const code of documented) {
+      assert.ok(produced.has(code), `the README documents exit ${code} and no run produced it`)
+    }
+  })
+
+  test('the two shapes of exit 2 the README documents are both real', async () => {
+    const root = await makeRoot({ 'prop-contract.json': '{ "version": ' })
+    roots.push(root)
+    const { code, stdout } = await runCli(['--root', root, '--json'])
+    assert.equal(code, 2)
+    assert.notEqual(stdout, '', 'an input that could not be parsed still reports WHICH input')
+    assert.equal(JSON.parse(stdout).status, 'incomplete')
   })
 })

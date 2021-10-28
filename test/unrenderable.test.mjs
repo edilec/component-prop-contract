@@ -10,7 +10,7 @@
 import assert from 'node:assert/strict'
 import { after, describe, test } from 'node:test'
 
-import { excerpt, renderable } from '../src/index.mjs'
+import { describeValue, excerpt, renderable } from '../src/index.mjs'
 import { BUTTON_SOURCE, contractDocument, makeRoot, removeRoot, runCli } from './support.mjs'
 
 const roots = []
@@ -33,6 +33,45 @@ describe('the primitive', () => {
 
   test('the description carries nothing of the value', () => {
     assert.equal(excerpt(JSON.parse('{"toString": {}, "secret": "AKIAIOSFODNN7EXAMPLE"}')), '[object]')
+  })
+
+  /**
+   * The other half of "describe by shape": a value that CAN be stringified and
+   * still renders as nothing. `the string ""` in a diagnostic says less than
+   * saying the string was there and said nothing -- the same
+   * validate-what-you-render gap, arriving through a message instead of a
+   * value.
+   */
+  test('describeValue names a string that renders as nothing rather than quoting an empty one', () => {
+    const invisible = `${String.fromCharCode(0x01)}${String.fromCharCode(0x85)}${String.fromCharCode(0x200e)}`
+    const described = describeValue(invisible)
+    assert.equal(/""/.test(described), false, 'an empty pair of quotes describes nothing')
+    assert.match(described, /3 character\(s\) that render as nothing/)
+    assert.equal(describeValue('visible'), 'the string "visible"')
+    assert.equal(describeValue(JSON.parse(HOSTILE)), 'an object')
+    assert.equal(describeValue(7), 'a number')
+    assert.equal(describeValue(null), 'null')
+    assert.equal(describeValue([]), 'an array')
+  })
+
+  test('a schemaVersion of only stripped characters is described, not quoted blank', async () => {
+    const invisible = `${String.fromCharCode(0x01)}${String.fromCharCode(0x85)}${String.fromCharCode(0x200e)}`
+    const root = await makeRoot({
+      'prop-contract.json': JSON.stringify({ schemaVersion: invisible, version: '1.0.0', components: [] }),
+      'src/Button.tsx': BUTTON_SOURCE,
+    })
+    roots.push(root)
+    const { code, stdout } = await runCli(['--root', root, '--json'])
+    const report = JSON.parse(stdout)
+    assert.equal(code, 2)
+    const finding = report.findings.find((entry) => entry.ruleId === 'schema-version-unsupported')
+    assert.ok(finding)
+    assert.equal(
+      /declares ""/.test(finding.message),
+      false,
+      'the diagnostic said `declares ""`, which tells a reader nothing about what was there',
+    )
+    assert.match(finding.message, /render as nothing/)
   })
 })
 

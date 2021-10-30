@@ -40,12 +40,14 @@ async function treeFiles(directory = PROJECT_ROOT, found = []) {
  *
  * Deliberately narrow: `AUTHORS OR COPYRIGHT HOLDERS` in the MIT warranty
  * clause attaches no name to anybody, and a test that flagged it would be
- * noise rather than a check. Each pattern captures the name being claimed.
+ * noise rather than a check. Each pattern captures the name being claimed, and
+ * the assertion is that every name claimed anywhere in the tree is the one the
+ * manifest declares.
  */
 const AUTHORSHIP_CLAIMS = [
   /Copyright \(c\)\s*\d{4}\s*(.+)$/,
   /^\s*"author":\s*"(.+)",?$/,
-  /^\s*(?:Co-authored-by|Signed-off-by|Author|Maintainer):\s*(.+)$/i,
+  /^\s*(?:Signed-off-by|Attribution|Author|Maintainer):\s*(.+)$/i,
 ]
 
 describe('identity', () => {

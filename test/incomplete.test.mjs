@@ -135,6 +135,35 @@ describe('a source that did not arrive', () => {
     }
   })
 
+  /**
+   * The CONTRACT has its own read, its own catch and its own `incomplete`
+   * flag, and the test above pins none of them.
+   *
+   * A path that resolves and then fails to open is not a hypothetical branch:
+   * `realpath` needs to traverse the directory, not to read the file, so a
+   * contract the process may not read resolves fine and throws EACCES on the
+   * read. With that one `incomplete = true` deleted the run became `fail` and
+   * exit 1 -- a contract this tool never read, reported as a fact about it --
+   * with the whole suite green.
+   */
+  test('a contract the process may not read is incomplete, not a failed comparison', async () => {
+    const root = await track(await makeCase())
+    const contract = join(root, 'prop-contract.json')
+    await chmod(contract, 0o000)
+    try {
+      const { code, report } = await reportFor(root)
+      if (report.status === 'pass') return // running as root defeats the permission bit
+      assert.equal(report.status, 'incomplete', 'a contract that was never read is not a contract that was checked')
+      assert.equal(code, 2)
+      const finding = report.findings.find((entry) => entry.ruleId === 'input-unreadable')
+      assert.ok(finding, 'the report names the document it could not read')
+      assert.equal(finding.location.file, 'prop-contract.json')
+      assertNothingCompared(report)
+    } finally {
+      await chmod(contract, 0o644)
+    }
+  })
+
   test('a contract naming a source path outside the root is refused before it is resolved', async () => {
     const root = await track(await makeCase(contractDocument({
       components: [componentEntry({ source: '../elsewhere/Button.tsx' })],

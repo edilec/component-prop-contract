@@ -31,6 +31,12 @@ interface: renaming one is a breaking change and gets its own entry.
   documented nowhere; the README and the rule document now state it and a test resolves every
   emitted pointer against the contract.
 
+- The `incomplete` flag on an unreadable **contract** is pinned. The contract and the sources have
+  separate reads, separate catches and separate flags, and only the source one had a test: with
+  that one `incomplete = true` deleted, a contract this tool never opened was reported as `fail`
+  at exit 1 -- a verdict about a document it had not read -- with the whole suite green. A
+  contract the process may not read now has its own case.
+
 ### Notes on this round
 
 The 0.1.0 test-suite commit said that every guarantee had been broken, the test watched to fail,

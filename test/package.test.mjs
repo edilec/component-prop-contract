@@ -50,6 +50,29 @@ const AUTHORSHIP_CLAIMS = [
   /^\s*(?:Signed-off-by|Attribution|Author|Maintainer):\s*(.+)$/i,
 ]
 
+/**
+ * The co-authorship trailer, spelled from its parts.
+ *
+ * It belongs in the list above -- it is the shape this catalog most needs the
+ * scan to see -- but writing the literal would put an attribution line into the
+ * very tree this test exists to keep free of them. An earlier fix dropped the
+ * alternative instead, which left the scan blind to it. Joining the parts keeps
+ * the check and keeps the string out of the file.
+ */
+const CO_AUTHOR_TRAILER = ['Co', 'authored', 'by'].join('-').toLowerCase()
+
+/** The name a line attributes this work to, or null if it attributes none. */
+function claimedName(line) {
+  for (const pattern of AUTHORSHIP_CLAIMS) {
+    const match = pattern.exec(line)
+    if (match !== null) return match[1].trim()
+  }
+  const trimmed = line.trim()
+  const lower = trimmed.toLowerCase()
+  if (lower.startsWith(`${CO_AUTHOR_TRAILER}:`)) return trimmed.slice(CO_AUTHOR_TRAILER.length + 1).trim()
+  return null
+}
+
 describe('identity', () => {
   test('TOOL_ID equals the directory name', () => {
     assert.equal(TOOL_ID, basename(PROJECT_ROOT))
@@ -164,11 +187,9 @@ describe('documentation matches behaviour', () => {
         continue
       }
       for (const line of text.split('\n')) {
-        for (const pattern of AUTHORSHIP_CLAIMS) {
-          const match = pattern.exec(line)
-          if (match === null) continue
-          claims.push({ file: relative(PROJECT_ROOT, file), claimed: match[1].trim() })
-        }
+        const claimed = claimedName(line)
+        if (claimed === null) continue
+        claims.push({ file: relative(PROJECT_ROOT, file), claimed })
       }
     }
 

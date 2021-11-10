@@ -163,3 +163,59 @@ describe('the confinement predicates', () => {
     assert.equal(isUsableSourcePath(42), false)
   })
 })
+
+/**
+ * A path that resolves outside the root is refused even when nothing is there.
+ *
+ * `realpath` fails with ENOENT for a file that does not exist, and the branch
+ * that then resolves the PARENT is what tells "outside the root" from "not
+ * there". Removing it left the suite green while the report changed its mind
+ * about what happened: `source-unreadable`, a fact about a file, in place of
+ * `source-path-escapes-root`, a fact about where the contract pointed. Both
+ * are incomplete and exit 2, so only the sentence a reader acts on differs --
+ * which is the whole of what a finding is for.
+ */
+describe('a path through a link out of the root is refused before it is there', () => {
+  test('a source inside a symlinked directory that holds no such file', async () => {
+    const outside = await track(await makeRoot({ 'note.txt': 'not the source' }))
+    const root = await track(await makeRoot({
+      'prop-contract.json': contractDocument({
+        components: [componentEntry({ source: 'link/Button.tsx', events: [] })],
+      }),
+    }))
+    await symlink(outside, join(root, 'link'))
+
+    const { code, stdout } = await runCli(['--root', root, '--json'])
+    const report = JSON.parse(stdout)
+    assert.equal(code, 2)
+    assert.equal(report.status, 'incomplete')
+    const finding = report.findings.find((entry) => entry.ruleId === 'source-path-escapes-root')
+    assert.ok(
+      finding,
+      `expected source-path-escapes-root, got ${[...new Set(report.findings.map((e) => e.ruleId))].join(', ')}`,
+    )
+    assert.equal(
+      report.findings.some((entry) => entry.ruleId === 'source-unreadable'),
+      false,
+      'the file being absent is not what happened; the path left the root',
+    )
+    assert.equal(report.summary.componentsCompared, 0)
+  })
+
+  test('and a file that is simply absent inside the root is unreadable, not an escape', async () => {
+    const root = await track(await makeRoot({
+      'prop-contract.json': contractDocument({
+        components: [componentEntry({ source: 'src/Button.tsx', events: [] })],
+      }),
+    }))
+    const { code, stdout } = await runCli(['--root', root, '--json'])
+    const report = JSON.parse(stdout)
+    assert.equal(code, 2)
+    assert.ok(report.findings.some((entry) => entry.ruleId === 'source-unreadable'))
+    assert.equal(
+      report.findings.some((entry) => entry.ruleId === 'source-path-escapes-root'),
+      false,
+      'nothing left the root here, so the other sentence would be wrong',
+    )
+  })
+})

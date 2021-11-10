@@ -10,7 +10,7 @@
 import assert from 'node:assert/strict'
 import { after, describe, test } from 'node:test'
 
-import { DEFAULT_LIMITS, HARD_LIMITS, checkPropContract, validateLimits } from '../src/index.mjs'
+import { DEFAULT_LIMITS, HARD_LIMITS, byCodeUnit, checkPropContract, validateLimits } from '../src/index.mjs'
 import {
   BUTTON_SOURCE, componentEntry, contractDocument, makeCase, makeRoot, removeRoot, runCli,
 } from './support.mjs'
@@ -159,5 +159,108 @@ describe('configuration that was never valid is refused, not ignored', () => {
       'maxComponents', 'maxContractBytes', 'maxFindings', 'maxMembers',
       'maxRuntimeMs', 'maxSourceBytes', 'maxTypeChars', 'maxTypeDepth',
     ])
+  })
+})
+
+/**
+ * The library entry point refuses configuration that never gave the run a
+ * subject -- and each refusal needs its own case.
+ *
+ * Every guard below was removed on its own with the suite green. What follows
+ * a missing guard is not a clean run: `options` that is not an object walks
+ * into `Object.keys`, a `monotonic` that is not callable is called anyway, a
+ * root that is not a string is handed to `realpath`, and a `contract` name
+ * carrying a control character or stepping outside the root is resolved. The
+ * CLI sees the same guards, because it calls the same function.
+ */
+describe('the library entry point refuses configuration it cannot use', () => {
+  test('options that are not an object', async () => {
+    for (const value of ['root', 7, [], null, true]) {
+      await assert.rejects(() => checkPropContract(value), /Options must be an object/, JSON.stringify(value))
+    }
+  })
+
+  test('an unknown option, rather than a silently ignored one', async () => {
+    await assert.rejects(() => checkPropContract({ root: '.', contarct: 'x.json' }), /Unknown option "contarct"/)
+  })
+
+  test('limits that are not an object', () => {
+    for (const value of ['none', 7, [], true]) {
+      assert.throws(() => validateLimits(value), /limits must be an object/, JSON.stringify(value))
+    }
+  })
+
+  test('a monotonic clock that is not callable', async () => {
+    await assert.rejects(
+      () => checkPropContract({ root: '.', monotonic: 0 }),
+      /monotonic must be a function/,
+    )
+  })
+
+  test('a root that is absent or not a string', async () => {
+    for (const options of [{}, { root: 7 }, { root: '' }, { root: null }, { root: [] }]) {
+      await assert.rejects(() => checkPropContract(options), /root is required/, JSON.stringify(options))
+    }
+  })
+
+  test('a contract name that is not a usable file name', async () => {
+    const root = await makeRoot({ 'prop-contract.json': contractDocument() })
+    roots.push(root)
+    // `contract: null` is not in this list on purpose: the reader spells the
+    // default with `??`, so null means "use the default" and is accepted.
+    for (const name of [7, '', [], true, 'a'.repeat(201)]) {
+      await assert.rejects(
+        () => checkPropContract({ root, contract: name }),
+        /contract must be a relative file name/,
+        JSON.stringify(name),
+      )
+    }
+  })
+
+  test('a contract name carrying a control, separator or bidi character', async () => {
+    const root = await makeRoot({ 'prop-contract.json': contractDocument() })
+    roots.push(root)
+    for (const code of [0x01, 0x0a, 0x85, 0x2028, 0x202e]) {
+      await assert.rejects(
+        () => checkPropContract({ root, contract: `a${String.fromCharCode(code)}b.json` }),
+        /contract must not contain a control, separator or bidi character/,
+        code.toString(16),
+      )
+    }
+  })
+
+  test('a contract name that is absolute or steps outside the root', async () => {
+    const root = await makeRoot({ 'prop-contract.json': contractDocument() })
+    roots.push(root)
+    await assert.rejects(() => checkPropContract({ root, contract: '/etc/passwd' }), /must be relative to --root/)
+    await assert.rejects(() => checkPropContract({ root, contract: '../x.json' }), /must not step outside --root/)
+  })
+
+  test('and an ordinary configuration is accepted, so none of this refuses everything', async () => {
+    const root = await makeRoot({ 'prop-contract.json': contractDocument(), 'src/Button.tsx': BUTTON_SOURCE })
+    roots.push(root)
+    const report = await checkPropContract({ root, contract: 'prop-contract.json', limits: { maxMembers: 10 } })
+    assert.equal(report.status, 'pass')
+  })
+})
+
+describe('the diagnostics for a refused limit are ordered, not incidental', () => {
+  test('the unknown key reported first is the first by code unit, not by collation', () => {
+    // Two unknown keys: a collator puts `alpha` before `Zed`, code units put
+    // `Zed` first. Whichever comes first is the one the message names, so the
+    // comparator is observable here and nowhere else.
+    assert.throws(() => validateLimits({ Zed: 1, alpha: 1 }), /Unknown limit "Zed"/)
+    assert.throws(() => validateLimits({ alpha: 1, Zed: 1 }), /Unknown limit "Zed"/)
+  })
+
+  test('the known limits are listed in code-unit order', () => {
+    try {
+      validateLimits({ nope: 1 })
+      assert.fail('an unknown limit must throw')
+    } catch (error) {
+      const listed = error.message.split('known limits are ')[1].split(', ')
+      assert.deepEqual(listed, [...listed].sort(byCodeUnit))
+      assert.deepEqual(listed, Object.keys(DEFAULT_LIMITS).sort(byCodeUnit))
+    }
   })
 })

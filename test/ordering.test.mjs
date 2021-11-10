@@ -116,6 +116,123 @@ describe('findings sort by code unit, not by collation', () => {
     assert.deepEqual(excluded.map((finding) => finding.message), [...excluded.map((finding) => finding.message)].sort(byCodeUnit))
   })
 
+  /**
+   * The pointer key is SECOND, and a collator reorders it.
+   *
+   * Dropping the key fails a test; substituting `Intl.Collator` for it did
+   * not, because every fixture used pointers the two orders agree about. An
+   * `argTypes` key is part of the pointer, and `Z` against `a` is exactly the
+   * pair collation reverses.
+   */
+  test('findings sharing a file order by pointer the way code units order them', async () => {
+    const { report: emitted } = await report({
+      'prop-contract.json': contractDocument({
+        components: [componentEntry({
+          props: undefined,
+          events: undefined,
+          argTypes: {
+            Z: { type: { name: 'string', required: true } },
+            a: { type: { name: 'string', required: true } },
+          },
+        })],
+      }),
+      'src/Button.tsx': `export interface ButtonProps {
+  Z: number;
+  a: number;
+}
+`,
+    })
+
+    const pointers = emitted.findings.map((finding) => finding.location.pointer)
+    assert.deepEqual(pointers, ['/components/0/argTypes/Z', '/components/0/argTypes/a'])
+    assert.equal(
+      new Set(emitted.findings.map((finding) => finding.location.file)).size,
+      1,
+      'both findings name one file, so only the pointer can order them',
+    )
+    assert.deepEqual(pointers, [...pointers].sort(byCodeUnit))
+  })
+
+  /**
+   * Ordering decides a VERDICT here, not only a report's shape.
+   *
+   * A union is compared as a set: both sides are sorted and compared element
+   * by element, so the comparator inside `matchesType` decides whether a type
+   * matches. Substituting a collator at either sort site -- or for the
+   * primitive itself -- turned this run from exit 0 into `prop-type-changed`
+   * at exit 1, with the whole suite green. `'Z'` against `'a'` is the pair
+   * that shows it.
+   */
+  test('a union whose members collate differently from their code units still matches', async () => {
+    const { code, report: emitted } = await report({
+      'prop-contract.json': contractDocument({
+        components: [componentEntry({
+          props: undefined,
+          events: undefined,
+          argTypes: { tone: { type: { name: 'enum', value: ['Z', 'a'], required: true } } },
+        })],
+      }),
+      'src/Button.tsx': `export interface ButtonProps {
+  tone: 'Z' | 'a';
+}
+`,
+    })
+    assert.equal(code, 0, 'the contract states exactly the type the source declares')
+    assert.equal(emitted.status, 'pass')
+    assert.equal(emitted.summary.typesMatched, 1)
+    assert.equal(emitted.summary.typesChanged, 0)
+  })
+
+  /**
+   * And the pair that catches the comparator being swapped WHOLESALE.
+   *
+   * Sorting both sides with the same collator keeps most unions matching, so
+   * replacing the primitive rather than one call site survived the case above.
+   * A collator does not merely order differently -- it calls distinct strings
+   * EQUAL. U+00AD (SOFT HYPHEN) is ignorable to `Intl.Collator('en')` and is
+   * not one of the characters this tool strips, so `ab` and `a<U+00AD>b` are
+   * two different values that a collator cannot tell apart: the two sides tie,
+   * the stable sort leaves each in the order it arrived, and a union that
+   * matches is reported as changed.
+   */
+  test('a union carrying a character a collator ignores is still compared by code unit', async () => {
+    const soft = `a${String.fromCharCode(0x00ad)}b`
+    const { code, report: emitted } = await report({
+      'prop-contract.json': contractDocument({
+        components: [componentEntry({
+          props: undefined,
+          events: undefined,
+          argTypes: { tone: { type: { name: 'enum', value: [soft, 'ab'], required: true } } },
+        })],
+      }),
+      'src/Button.tsx': `export interface ButtonProps {
+  tone: 'ab' | '${soft}';
+}
+`,
+    })
+    assert.equal(code, 0, 'the two sides state the same set, in the orders a collator would tie')
+    assert.equal(emitted.summary.typesMatched, 1)
+    assert.equal(emitted.summary.typesChanged, 0)
+  })
+
+  test('and a union that really differs still fails, so the comparison is not simply agreeing', async () => {
+    const { code, report: emitted } = await report({
+      'prop-contract.json': contractDocument({
+        components: [componentEntry({
+          props: undefined,
+          events: undefined,
+          argTypes: { tone: { type: { name: 'enum', value: ['Z', 'a'], required: true } } },
+        })],
+      }),
+      'src/Button.tsx': `export interface ButtonProps {
+  tone: 'Z' | 'b';
+}
+`,
+    })
+    assert.equal(code, 1)
+    assert.equal(emitted.summary.typesChanged, 1)
+  })
+
   test('several added props sharing one pointer are listed in code-unit order', async () => {
     const { report: emitted } = await report({
       'prop-contract.json': contractDocument({

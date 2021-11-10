@@ -31,6 +31,32 @@ interface: renaming one is a breaking change and gets its own entry.
   documented nowhere; the README and the rule document now state it and a test resolves every
   emitted pointer against the contract.
 
+- Ordering is pinned where it decides a VERDICT, not only a report's shape. A union is compared as
+  a set -- both sides sorted, then compared element by element -- so the comparator inside
+  `matchesType` decides whether a type matches. Substituting `Intl.Collator` at either sort site
+  turned a contract stating `'Z' | 'a'` against a source declaring the same two values from exit 0
+  into `prop-type-changed` at exit 1, with the whole suite green. Three cases hold it now,
+  including the pair a collator calls EQUAL rather than merely orders differently.
+- The `location.pointer` sort key is pinned against a collator as well as against deletion. Every
+  fixture had used pointers the two orders agree about; an `argTypes` key of `Z` against `a` is
+  the pair collation reverses.
+- Every refusal in the contract reader has a case of its own, asserting the consequence. Seven
+  guards could be removed with the suite green while the CLI reported something else: an
+  `argTypes` key that renders as nothing reached the compared surface and was reported as an
+  addition -- the README's "refused rather than rendered blank" guarantee failing on the one side
+  of the document nothing was watching -- and an unusable `propsType` was reported as a type the
+  source does not export.
+- The evidence on a type change names what the contract required. The `callable` and `union`
+  branches of `describeMatcher` could each be deleted with the suite green, leaving `contract: `
+  with nothing after it.
+- The library entry point's refusals each have a case: options that are not an object, an unknown
+  option, limits that are not an object, a `monotonic` that is not callable, an absent root, and a
+  `contract` name that is unusable, carries a control character, is absolute, or steps outside the
+  root.
+- A source path that resolves outside the root through a link is refused as an escape even when no
+  file is there. Removing the branch that resolves the parent left the suite green while the
+  report called it `source-unreadable` -- a fact about a file -- instead of
+  `source-path-escapes-root`, a fact about where the contract pointed.
 - The `incomplete` flag on an unreadable **contract** is pinned. The contract and the sources have
   separate reads, separate catches and separate flags, and only the source one had a test: with
   that one `incomplete = true` deleted, a contract this tool never opened was reported as `fail`

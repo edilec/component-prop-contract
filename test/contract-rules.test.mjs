@@ -594,3 +594,188 @@ describe('matcherFromArgType is total, whatever it is handed', () => {
     }
   })
 })
+
+/**
+ * Every refusal in the contract reader, and the consequence of each.
+ *
+ * `member-invalid` and `component-invalid` cover a dozen separate decisions,
+ * and a rule id firing somewhere is not a decision being defended. Each guard
+ * below was removed on its own and the whole suite stayed green, while the
+ * report the CLI produced changed: a different rule id, a different pointer,
+ * or -- for the `argTypes` key -- a member named with characters that render
+ * as nothing walking into the compared surface and being reported as an
+ * addition, which is the README's "refused rather than rendered blank"
+ * guarantee failing on the one side of the document nothing was watching.
+ */
+describe('every refusal in the contract reader is reachable, and says what it refused', () => {
+  const STRIPPED = `${String.fromCharCode(0x01)}${String.fromCharCode(0x85)}${String.fromCharCode(0x200e)}`
+  const ONE_MEMBER = `export interface ButtonProps {
+  label: string;
+}
+`
+
+  const CASES = [
+    {
+      what: 'argTypes that is not an object',
+      component: componentEntry({ props: undefined, events: undefined, argTypes: 'abc' }),
+      ruleId: 'component-invalid',
+      pointer: '/components/0/argTypes',
+    },
+    {
+      what: 'an argTypes key that renders as nothing',
+      component: componentEntry({
+        props: undefined,
+        events: undefined,
+        argTypes: { [STRIPPED]: { type: { name: 'string', required: true } } },
+      }),
+      ruleId: 'member-invalid',
+    },
+    {
+      what: 'an argTypes key carrying whitespace',
+      component: componentEntry({
+        props: undefined,
+        events: undefined,
+        argTypes: { 'a b': { type: { name: 'string', required: true } } },
+      }),
+      ruleId: 'member-invalid',
+    },
+    {
+      what: 'an argTypes entry that is not an object',
+      component: componentEntry({ props: undefined, events: undefined, argTypes: { label: 'string' } }),
+      ruleId: 'member-invalid',
+      pointer: '/components/0/argTypes/label',
+    },
+    {
+      what: 'an argTypes type that is not an object',
+      component: componentEntry({ props: undefined, events: undefined, argTypes: { label: { type: 'string' } } }),
+      ruleId: 'member-invalid',
+      pointer: '/components/0/argTypes/label/type',
+    },
+    {
+      what: 'a declared member that is not an object',
+      component: componentEntry({ props: ['label'], events: undefined }),
+      ruleId: 'member-invalid',
+      pointer: '/components/0/props/0',
+    },
+    {
+      what: 'a propsType this tool cannot name',
+      component: componentEntry({ propsType: STRIPPED, events: undefined }),
+      ruleId: 'component-invalid',
+      pointer: '/components/0/propsType',
+    },
+  ]
+
+  for (const item of CASES) {
+    test(`${item.what} is refused, and nothing is compared`, async () => {
+      const root = await caseRoot(contractDocument({ components: [item.component] }), ONE_MEMBER)
+      const { code, report } = await reportFor(root)
+
+      assert.equal(code, 1)
+      const finding = report.findings.find((entry) => entry.ruleId === item.ruleId)
+      assert.ok(
+        finding,
+        `expected ${item.ruleId}, got ${[...new Set(report.findings.map((entry) => entry.ruleId))].join(', ')}`,
+      )
+      if (item.pointer !== undefined) assert.equal(finding.location.pointer, item.pointer)
+
+      // The consequence. Each of these guards, removed, left a DIFFERENT rule
+      // firing or a member reaching the comparison; asserting the rule id
+      // alone would not have noticed.
+      assert.equal(report.summary.componentsCompared, 0, 'a component with a refused member is not compared')
+      assert.equal(report.summary.publicMembers, 0)
+      for (const ruleId of ['prop-added', 'prop-missing', 'prop-now-required', 'prop-type-unconstrained',
+                            'props-type-missing', 'component-unknown-field']) {
+        assert.equal(
+          report.findings.some((entry) => entry.ruleId === ruleId),
+          false,
+          `${ruleId} is a claim about a surface this run never established`,
+        )
+      }
+    })
+  }
+
+  test('a component entry that is not an object is refused before its fields are read', async () => {
+    const root = await caseRoot(contractDocument({ components: ['Button'] }), ONE_MEMBER)
+    const { code, report } = await reportFor(root)
+    assert.equal(code, 1)
+    const finding = report.findings.find((entry) => entry.ruleId === 'component-invalid')
+    assert.ok(finding)
+    assert.equal(finding.location.pointer, '/components/0')
+    assert.equal(
+      report.findings.some((entry) => entry.ruleId === 'component-unknown-field'),
+      false,
+      'a string has no fields to be unknown, and reading it for them reports nonsense',
+    )
+  })
+
+  test('and the same contract written properly is compared, so none of this refuses everything', async () => {
+    const root = await caseRoot(
+      contractDocument({
+        components: [componentEntry({
+          props: undefined,
+          events: undefined,
+          argTypes: { label: { type: { name: 'string', required: true } } },
+        })],
+      }),
+      ONE_MEMBER,
+    )
+    const { code, report } = await reportFor(root)
+    assert.equal(code, 0)
+    assert.equal(report.summary.componentsCompared, 1)
+    assert.equal(report.summary.publicMembers, 1)
+    assert.equal(report.summary.membersMatched, 1)
+  })
+})
+
+/**
+ * A matcher is described by what it IS, not by text it does not carry.
+ *
+ * `describeMatcher` has a branch per kind, and the `callable` and `union`
+ * branches could each be deleted with the suite green: a `none` and an `exact`
+ * matcher carry a `source` string to fall back on and those two do not, so the
+ * evidence quietly became `contract: ` with nothing after it. The evidence is
+ * the half of the finding that says what the contract asked for.
+ */
+describe('the evidence names what the contract required', () => {
+  test('a function requirement reads as one, rather than as nothing', async () => {
+    const root = await caseRoot(
+      contractDocument({
+        components: [componentEntry({
+          props: undefined,
+          events: undefined,
+          argTypes: { onClick: { type: { name: 'function', required: true } } },
+        })],
+      }),
+      `export interface ButtonProps {
+  onClick: string;
+}
+`,
+    )
+    const { code, report } = await reportFor(root)
+    assert.equal(code, 1)
+    const finding = report.findings.find((entry) => entry.ruleId === 'event-type-changed')
+    assert.ok(finding)
+    assert.equal(finding.evidence, 'contract: a function; source line 2: string')
+  })
+
+  test('an enum requirement lists its values, rather than as nothing', async () => {
+    const root = await caseRoot(
+      contractDocument({
+        components: [componentEntry({
+          props: undefined,
+          events: undefined,
+          argTypes: { tone: { type: { name: 'enum', value: ['a', 'b'], required: true } } },
+        })],
+      }),
+      `export interface ButtonProps {
+  tone: 'a' | 'c';
+}
+`,
+    )
+    const { code, report } = await reportFor(root)
+    assert.equal(code, 1)
+    const finding = report.findings.find((entry) => entry.ruleId === 'prop-type-changed')
+    assert.ok(finding)
+    assert.equal(finding.evidence, "contract: 'a' | 'b'; source line 2: 'a'|'c'")
+  })
+})

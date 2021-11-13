@@ -57,6 +57,11 @@ interface: renaming one is a breaking change and gets its own entry.
   file is there. Removing the branch that resolves the parent left the suite green while the
   report called it `source-unreadable` -- a fact about a file -- instead of
   `source-path-escapes-root`, a fact about where the contract pointed.
+- The masker's own guards have cases of their own. Four could be removed with the suite green,
+  because every fixture that reached them was decided by a guard further up. The escape pair
+  matters most: without it an ordinary literal type containing an escaped quote -- `'it\'s'` --
+  is refused as an unterminated string, so a source this tool should read becomes `incomplete`
+  and exit 2.
 - The `incomplete` flag on an unreadable **contract** is pinned. The contract and the sources have
   separate reads, separate catches and separate flags, and only the source one had a test: with
   that one `incomplete = true` deleted, a contract this tool never opened was reported as `fail`

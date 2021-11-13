@@ -242,3 +242,53 @@ describe('the supporting primitives', () => {
     assert.equal(isEventName('on'), false)
   })
 })
+
+/**
+ * The masker's own guards, each on an input that only it decides.
+ *
+ * Four of them could be removed with the suite green, because the fixtures
+ * that reach them are decided by a guard further up. The escape pair is the
+ * one that matters most: without it a perfectly ordinary literal type
+ * containing an escaped quote is refused as an unterminated string, so a
+ * source this tool should read becomes `incomplete` and exit 2.
+ */
+describe('a string literal is masked the way the language reads it', () => {
+  const BS = String.fromCharCode(92)
+  const BT = String.fromCharCode(96)
+
+  test("an escaped quote inside a literal type does not end the literal", () => {
+    const result = read(`export interface P { a: 'it${BS}'s'; }`)
+    assert.equal(result.ok, true, 'an escaped quote is not the end of the string')
+    assert.deepEqual(result.members.map((member) => member.type), [`'it${BS}'s'`])
+  })
+
+  test('an escaped quote inside a member NAME does not end the literal either', () => {
+    const result = read(`export interface P { 'a${BS}'b': string; }`)
+    assert.equal(result.ok, true)
+    assert.deepEqual(result.members.map((member) => member.name), [`a${BS}'b`])
+  })
+
+  test('a quoted string is refused where it opens, not where a later quote would close it', () => {
+    // Without the newline guard the literal runs on and closes at the quote on
+    // the next line, and the refusal points at the wrong place.
+    const result = read(`export interface P { a: 'open
+  b: 'x'; }`)
+    assert.equal(result.ok, false)
+    assert.equal(result.reason, 'unterminated-string')
+    assert.equal(result.line, 1, 'the line reported is where the literal opened')
+  })
+
+  test('a template literal that never closes is an unterminated string, not an unbalanced body', () => {
+    // A template may legally span lines, so the newline guard does not apply to
+    // it and the end-of-scan check is the only thing that refuses it.
+    const result = read(`export interface P { a: ${BT}open; }`)
+    assert.equal(result.ok, false)
+    assert.equal(result.reason, 'unterminated-string')
+  })
+
+  test('and a template that does close is read, so none of this refuses every template', () => {
+    const result = read(`export interface P { a: ${BT}plain${BT}; }`)
+    assert.equal(result.ok, true)
+    assert.deepEqual(result.members.map((member) => member.type), [`${BT}plain${BT}`])
+  })
+})

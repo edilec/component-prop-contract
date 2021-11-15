@@ -225,6 +225,26 @@ describe('the supporting primitives', () => {
     assert.deepEqual(splitUnion('Record<a|b,c>'), ['Record<a|b,c>'])
   })
 
+  /**
+   * An angle bracket that CLOSES is what lets a union after a generic split.
+   *
+   * Only a `<` ever opened the count in the fixtures above, so the branch that
+   * closes it could be removed with the suite green: `Record<a,b>|string` then
+   * reads as one part, a top-level union stops being compared as a set, and
+   * two spellings of the same type are reported as a type change.
+   */
+  test('splitUnion resumes splitting after a generic closes', () => {
+    assert.deepEqual(splitUnion('Record<a,b>|string'), ['Record<a,b>', 'string'])
+    assert.deepEqual(splitUnion('Array<a>|Set<b>|c'), ['Array<a>', 'Set<b>', 'c'])
+    assert.equal(
+      normaliseType('Record<string, number> | string'),
+      normaliseType('string | Record<string, number>'),
+      'a top-level union is a set, and a generic inside it does not stop it being one',
+    )
+    // And the arrow in a function type is not a closing bracket.
+    assert.deepEqual(splitUnion('((a: number) => void)|string'), ['((a: number) => void)', 'string'])
+  })
+
   test('isPrivateMember sees all three markings, and nothing else', () => {
     assert.equal(isPrivateMember({ name: '_x', doc: '' }).private, true)
     assert.equal(isPrivateMember({ name: 'x', doc: '* @internal ' }).private, true)

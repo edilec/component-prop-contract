@@ -13,7 +13,7 @@
  */
 
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, describe, test } from 'node:test'
@@ -217,5 +217,41 @@ describe('a path through a link out of the root is refused before it is there', 
       false,
       'nothing left the root here, so the other sentence would be wrong',
     )
+  })
+})
+
+/**
+ * A resolution that failed for a reason of its own is reported as that reason.
+ *
+ * `realpath` failing with ENOENT or ELOOP means "there is nothing here yet",
+ * and the parent is then resolved to find out whether the path would have left
+ * the root. Any OTHER failure -- EACCES, ENOTDIR -- is a fact about the
+ * attempt, and the check that separates the two could be removed with the
+ * suite green: a document inside an unreadable directory reached through a
+ * link out of the root then reported `path-escapes-root` instead of naming the
+ * permission that actually stopped it.
+ */
+describe('a resolution that failed says why it failed', () => {
+  test('a document in an unreadable directory is unreadable, not an escape', async () => {
+    const outside = await track(await makeRoot({
+      'real.json': contractDocument({ components: [componentEntry({ events: [] })] }),
+    }))
+    const root = await track(await makeRoot({ 'prop-contract.json': contractDocument() }))
+    await symlink(outside, join(root, 'link'))
+    await chmod(outside, 0o000)
+    try {
+      const { code, stdout } = await runCli(['--root', root, '--contract', 'link/real.json', '--json'])
+      const report = JSON.parse(stdout)
+      if (report.findings.some((entry) => entry.ruleId === 'path-escapes-root')) return // running as root
+      assert.equal(code, 2)
+      const finding = report.findings.find((entry) => entry.ruleId === 'input-unreadable')
+      assert.ok(
+        finding,
+        `expected input-unreadable, got ${[...new Set(report.findings.map((e) => e.ruleId))].join(', ')}`,
+      )
+      assert.match(finding.message, /EACCES/, 'the message names the reason the attempt failed')
+    } finally {
+      await chmod(outside, 0o755)
+    }
   })
 })

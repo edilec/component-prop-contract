@@ -11,9 +11,13 @@ import assert from 'node:assert/strict'
 import { after, describe, test } from 'node:test'
 
 import { CONTROL_CLASSES, excerpt, hasForbiddenCharacter, isUsableText } from '../src/index.mjs'
-import { componentEntry, contractDocument, makeRoot, removeRoot, runCli } from './support.mjs'
+import { componentEntry, contractDocument, makeRoot, removeRoot, reportFor, runCli } from './support.mjs'
 
 const roots = []
+async function trackRoot(root) {
+  roots.push(root)
+  return root
+}
 after(async () => { await Promise.all(roots.map(removeRoot)) })
 
 const FORBIDDEN = Object.entries(CONTROL_CLASSES).flatMap(
@@ -253,5 +257,66 @@ describe('the sanitising primitives', () => {
     assert.ok(CONTROL_CLASSES.c1.includes(0x85), 'NEL starts a line on a terminal exactly as a line feed does')
     assert.ok(CONTROL_CLASSES.c1.includes(0x9b), '8-bit CSI opens an escape sequence')
     assert.ok(CONTROL_CLASSES.bidi.includes(0x202e), 'RIGHT-TO-LEFT OVERRIDE reverses displayed text')
+  })
+})
+
+/**
+ * A value longer than the limit is refused, not truncated into usability.
+ *
+ * `isUsableText` checks the raw length before asking what the value renders
+ * as, and that length check could be removed with the suite green: `excerpt`
+ * truncates to the limit and appends an ellipsis, so the rendering of a
+ * 1000-character note is non-empty and the value would be accepted. The
+ * report would then carry a truncated version of something the document was
+ * told was too long -- the "validate what you will render" table's second row,
+ * arriving through the length check rather than through `trim`.
+ */
+describe('a value past its length limit is refused rather than truncated', () => {
+  test('a member name longer than 200 characters', async () => {
+    const root = await trackRoot(await makeRoot({
+      'prop-contract.json': contractDocument({
+        components: [componentEntry({
+          props: [{ name: 'a'.repeat(201), type: 'string', required: true }],
+          events: [],
+        })],
+      }),
+      'src/Button.tsx': 'export interface ButtonProps {\n  label: string;\n}\n',
+    }))
+    const { code, report } = await reportFor(root)
+    assert.equal(code, 1)
+    const finding = report.findings.find((entry) => entry.ruleId === 'member-invalid')
+    assert.ok(finding, `got ${[...new Set(report.findings.map((e) => e.ruleId))].join(', ')}`)
+    assert.match(finding.message, /1-200 characters/)
+  })
+
+  test('a note longer than 400 characters', async () => {
+    const root = await trackRoot(await makeRoot({
+      'prop-contract.json': contractDocument({
+        components: [componentEntry({
+          props: [{ name: 'label', type: 'string', required: true, note: 'n'.repeat(401) }],
+          events: [],
+        })],
+      }),
+      'src/Button.tsx': 'export interface ButtonProps {\n  label: string;\n}\n',
+    }))
+    const { code, report } = await reportFor(root)
+    assert.equal(code, 1)
+    assert.ok(report.findings.some((entry) => entry.ruleId === 'member-invalid'))
+  })
+
+  test('and a name of exactly 200 characters is accepted, so the bound is the bound', async () => {
+    const name = 'a'.repeat(200)
+    const root = await trackRoot(await makeRoot({
+      'prop-contract.json': contractDocument({
+        components: [componentEntry({
+          props: [{ name, type: 'string', required: true }],
+          events: [],
+        })],
+      }),
+      'src/Button.tsx': `export interface ButtonProps {\n  ${name}: string;\n}\n`,
+    }))
+    const { code, report } = await reportFor(root)
+    assert.equal(code, 0, 'the limit is 200, not 199')
+    assert.equal(report.summary.membersMatched, 1)
   })
 })

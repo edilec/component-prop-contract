@@ -184,6 +184,12 @@ describe('the library entry point refuses configuration it cannot use', () => {
     await assert.rejects(() => checkPropContract({ root: '.', contarct: 'x.json' }), /Unknown option "contarct"/)
   })
 
+  test('the unknown option reported first is the first by code unit, not by collation', async () => {
+    // A collator puts `alpha` before `Zed`; code units put `Zed` first.
+    await assert.rejects(() => checkPropContract({ Zed: 1, alpha: 1 }), /Unknown option "Zed"/)
+    await assert.rejects(() => checkPropContract({ alpha: 1, Zed: 1 }), /Unknown option "Zed"/)
+  })
+
   test('limits that are not an object', () => {
     for (const value of ['none', 7, [], true]) {
       assert.throws(() => validateLimits(value), /limits must be an object/, JSON.stringify(value))

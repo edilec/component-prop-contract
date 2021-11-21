@@ -233,6 +233,16 @@ describe('the supporting primitives', () => {
    * reads as one part, a top-level union stops being compared as a set, and
    * two spellings of the same type are reported as a type change.
    */
+  test('normaliseType orders a union by code unit, not by collation', () => {
+    // The set a union normalises to is rendered in the evidence of every type
+    // change, so this comparator is observable output. `'a' | 'Z'` is the pair
+    // collation reverses.
+    assert.equal(normaliseType("'a' | 'Z'"), "'Z'|'a'")
+    assert.equal(normaliseType("'Z' | 'a'"), "'Z'|'a'")
+    assert.equal(normaliseType('onBlur|onblur'), 'onBlur|onblur')
+    assert.equal(normaliseType("'a'"), "'a'", 'a single member is the type itself')
+  })
+
   test('splitUnion resumes splitting after a generic closes', () => {
     assert.deepEqual(splitUnion('Record<a,b>|string'), ['Record<a,b>', 'string'])
     assert.deepEqual(splitUnion('Array<a>|Set<b>|c'), ['Array<a>', 'Set<b>', 'c'])
@@ -304,6 +314,22 @@ describe('a string literal is masked the way the language reads it', () => {
     const result = read(`export interface P { a: ${BT}open; }`)
     assert.equal(result.ok, false)
     assert.equal(result.reason, 'unterminated-string')
+  })
+
+  test('a nested object member keeps its braces, rather than ending at the first semicolon', () => {
+    // The bracket counter is what lets a member's type carry a `;` inside it.
+    // Without the branch that opens the count, `{ b: string; c: number }` ends
+    // at the inner semicolon and the rest is reported as an unbalanced type.
+    const result = read('export interface P { a: { b: string; c: number }; d: string; }')
+    assert.equal(result.ok, true)
+    assert.deepEqual(result.unsupported, [])
+    assert.deepEqual(result.members.map((member) => member.type), ['{ b: string; c: number }', 'string'])
+  })
+
+  test('a type alias with no equals sign is an unbalanced body, not a union alias', () => {
+    const result = read('export type P { a: string };')
+    assert.equal(result.ok, false)
+    assert.equal(result.reason, 'unbalanced-body')
   })
 
   test('and a template that does close is read, so none of this refuses every template', () => {

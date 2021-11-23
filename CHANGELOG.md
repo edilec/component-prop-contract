@@ -78,6 +78,15 @@ attachment boundary, the `message` sort key, the no-whitespace half of `isUsable
 that fails when the behaviour is removed. That claim is recorded here rather than left in a
 commit message nobody re-reads.
 
+Six was an undercount, and the correction belongs here too. A second sweep, enumerated
+independently from the source rather than from a list -- every severity flipped, every
+`incomplete = true` deleted, every `if` condition in `src/` and `bin/` forced to `false`, every
+ordering site given a collator -- ran 285 mutations and found **50** that left the suite green.
+Most are now pinned by the entries above. The ones that remain are recorded as what they are:
+`if (left === right)` inside the comparator and `if (expired)` inside the budget memo are
+equivalent mutants -- the first orders identical strings, whose relative order nothing can
+observe; the second guards a branch with one call site that breaks on the value it returns.
+
 ## 0.1.0
 
 First release.

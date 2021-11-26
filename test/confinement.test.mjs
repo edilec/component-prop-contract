@@ -232,7 +232,11 @@ describe('a path through a link out of the root is refused before it is there', 
  * permission that actually stopped it.
  */
 describe('a resolution that failed says why it failed', () => {
-  test('a document in an unreadable directory is unreadable, not an escape', async () => {
+  test('a document in an unreadable directory is unreadable, not an escape', async (context) => {
+    // Root defeats the permission bit, and the outcome it produces is the same
+    // one a missing guard produces -- so skip rather than assert a false thing.
+    if (typeof process.getuid === 'function' && process.getuid() === 0) return context.skip()
+
     const outside = await track(await makeRoot({
       'real.json': contractDocument({ components: [componentEntry({ events: [] })] }),
     }))
@@ -242,7 +246,6 @@ describe('a resolution that failed says why it failed', () => {
     try {
       const { code, stdout } = await runCli(['--root', root, '--contract', 'link/real.json', '--json'])
       const report = JSON.parse(stdout)
-      if (report.findings.some((entry) => entry.ruleId === 'path-escapes-root')) return // running as root
       assert.equal(code, 2)
       const finding = report.findings.find((entry) => entry.ruleId === 'input-unreadable')
       assert.ok(

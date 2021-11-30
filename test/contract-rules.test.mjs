@@ -708,6 +708,32 @@ describe('every refusal in the contract reader is reachable, and says what it re
     )
   })
 
+  /**
+   * One refusal per member, not one per field of it.
+   *
+   * The `continue` after an unusable free-text field is what stops the rest of
+   * the entry being read and reported as well. Removing it left the suite green
+   * while an entry with an unusable `name` AND an unreadable `type` produced
+   * two findings where one describes the entry.
+   */
+  test('an entry with more than one thing wrong is refused once, at the first thing', async () => {
+    const root = await caseRoot(
+      contractDocument({
+        components: [componentEntry({
+          props: undefined,
+          events: undefined,
+          argTypes: { label: { name: STRIPPED, type: 'notanobject' } },
+        })],
+      }),
+      ONE_MEMBER,
+    )
+    const { code, report } = await reportFor(root)
+    assert.equal(code, 1)
+    const invalid = report.findings.filter((entry) => entry.ruleId === 'member-invalid')
+    assert.equal(invalid.length, 1, `one refusal per member: got ${invalid.map((e) => e.location.pointer).join(', ')}`)
+    assert.equal(invalid[0].location.pointer, '/components/0/argTypes/label/name')
+  })
+
   test('and the same contract written properly is compared, so none of this refuses everything', async () => {
     const root = await caseRoot(
       contractDocument({

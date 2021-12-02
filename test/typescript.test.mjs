@@ -338,3 +338,39 @@ describe('a string literal is masked the way the language reads it', () => {
     assert.deepEqual(result.members.map((member) => member.type), [`${BT}plain${BT}`])
   })
 })
+
+/**
+ * A construct the subset refuses does not swallow the members after it.
+ *
+ * The scanner skips to the member's terminator, counting brackets so a `;`
+ * inside one does not end it early. Each of the three branches that do the
+ * counting could be removed with the suite green: the surrounding tests assert
+ * that the index signature is REPORTED, and none asserted that the member
+ * after it is still read. A public prop quietly leaving the compared surface
+ * is the outcome those guards exist to prevent.
+ */
+describe('a refused construct is stepped over, not run into', () => {
+  for (const [what, source] of [
+    ['an index signature', 'export interface P { [k: string]: unknown; a: string; }'],
+    ['a method signature', 'export interface P { m(): void; a: string; }'],
+    ['a call signature', 'export interface P { (x: number): void; a: string; }'],
+  ]) {
+    test(`${what} is reported, and the member after it is still read`, () => {
+      const result = read(source)
+      assert.equal(result.ok, true)
+      assert.equal(result.unsupported.length, 1, 'exactly the one construct is unsupported')
+      assert.deepEqual(
+        result.members.map((member) => member.name),
+        ['a'],
+        'the member after the refused construct is part of the surface',
+      )
+    })
+  }
+
+  test('a type whose brackets close before they open is unbalanced, not read as text', () => {
+    const result = read('export interface P { a: )string(; b: string; }')
+    assert.equal(result.ok, true)
+    assert.deepEqual(result.unsupported.map((item) => item.reason), ['unbalanced-type'])
+    assert.deepEqual(result.members.map((member) => member.name), [])
+  })
+})

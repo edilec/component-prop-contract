@@ -531,8 +531,16 @@ export function normaliseType(text) {
   const tightened = flattened
     .replace(/\s*([|&<>,(){}[\]:;?])\s*/g, '$1')
     .replace(/\s*=>\s*/g, '=>')
+  /**
+   * Every type goes through the union split, including one that turns out not
+   * to be a union.
+   *
+   * Returning `tightened` untouched for a single part looked like a shortcut
+   * and was a difference: `| 'a'` is the same type as `'a'` in TypeScript, and
+   * `splitUnion` drops the empty leading part, so the shortcut compared the two
+   * spellings as different types while the long way compares them as one.
+   */
   const parts = splitUnion(tightened)
-  if (parts.length < 2) return tightened
   return [...new Set(parts)].sort((a, b) => (a === b ? 0 : a < b ? -1 : 1)).join('|')
 }
 

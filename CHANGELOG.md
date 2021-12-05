@@ -57,6 +57,9 @@ interface: renaming one is a breaking change and gets its own entry.
   file is there. Removing the branch that resolves the parent left the suite green while the
   report called it `source-unreadable` -- a fact about a file -- instead of
   `source-path-escapes-root`, a fact about where the contract pointed.
+- A leading or trailing `|` is a spelling of a type, not a different type. `type X = | 'a'` is
+  legal TypeScript and means `'a'`; `normaliseType` took a shortcut for a single union part and
+  left the pipe in place, so the two spellings compared as different types.
 - The masker's own guards have cases of their own. Four could be removed with the suite green,
   because every fixture that reached them was decided by a guard further up. The escape pair
   matters most: without it an ordinary literal type containing an escaped quote -- `'it\'s'` --

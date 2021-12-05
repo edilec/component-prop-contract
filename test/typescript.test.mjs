@@ -233,6 +233,16 @@ describe('the supporting primitives', () => {
    * reads as one part, a top-level union stops being compared as a set, and
    * two spellings of the same type are reported as a type change.
    */
+  test('a leading or trailing pipe is a spelling, not a different type', () => {
+    // `type X = | 'a'` is legal and means `'a'`. Taking a shortcut for a
+    // single part left the leading pipe in place, so the two spellings
+    // compared as different types.
+    assert.equal(normaliseType("| 'a'"), "'a'")
+    assert.equal(normaliseType("'a' |"), "'a'")
+    assert.equal(normaliseType("| 'a' | 'b'"), "'a'|'b'")
+    assert.equal(normaliseType('string'), 'string')
+  })
+
   test('normaliseType orders a union by code unit, not by collation', () => {
     // The set a union normalises to is rendered in the evidence of every type
     // change, so this comparator is observable output. `'a' | 'Z'` is the pair

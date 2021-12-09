@@ -377,6 +377,28 @@ describe('a refused construct is stepped over, not run into', () => {
     })
   }
 
+  /**
+   * An empty member is nothing, not a member with an unreadable name.
+   *
+   * A stray or doubled separator is a typo a real source carries, and the
+   * branch that steps over one could be removed with the suite green: the
+   * scanner then tried to read a name where there was none and reported
+   * `unreadable-member-name`, which makes the run incomplete at exit 2 over a
+   * source it can read perfectly well.
+   */
+  for (const [what, source] of [
+    ['a leading semicolon', 'export interface P { ; a: string; }'],
+    ['a doubled semicolon', 'export interface P { a: string;; b: number; }'],
+    ['a leading comma', 'export interface P { , a: string, }'],
+  ]) {
+    test(`${what} is stepped over, not read as a member`, () => {
+      const result = read(source)
+      assert.equal(result.ok, true)
+      assert.deepEqual(result.unsupported, [], 'an empty member is nothing to report')
+      assert.ok(result.members.length > 0)
+    })
+  }
+
   test('a type whose brackets close before they open is unbalanced, not read as text', () => {
     const result = read('export interface P { a: )string(; b: string; }')
     assert.equal(result.ok, true)

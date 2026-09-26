@@ -1,0 +1,53 @@
+{
+  "name": "component-prop-contract",
+  "version": "0.1.0",
+  "description": "Compare the public props and events a TypeScript component declares against a versioned contract, classifying compatible additions and incompatible breaks, and reporting syntax it cannot read rather than guessing at it.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "lint": "for file in bin/*.mjs src/*.mjs test/*.mjs; do node --check \"$file\" || exit 1; done",
+    "test": "node --test",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-include=src/**",
+    "example": "node bin/component-prop-contract.mjs --root examples/honoured",
+    "example:failing": "node bin/component-prop-contract.mjs --root examples/broken; test $? -eq 1",
+    "example:unsupported": "node bin/component-prop-contract.mjs --root examples/unsupported; test $? -eq 2",
+    "pack:check": "npm pack --dry-run",
+    "check": "npm run lint && npm test && npm run example && npm run example:failing && npm run example:unsupported && npm run pack:check"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/edilec/component-prop-contract.git"
+  },
+  "bin": {
+    "component-prop-contract": "./bin/component-prop-contract.mjs"
+  },
+  "exports": {
+    ".": "./src/index.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "examples",
+    "docs",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "design-system",
+    "typescript",
+    "props",
+    "api-contract",
+    "breaking-change",
+    "static-analysis",
+    "cli"
+  ],
+  "author": "Edilec Private Limited",
+  "bugs": {
+    "url": "https://github.com/edilec/component-prop-contract/issues"
+  },
+  "homepage": "https://github.com/edilec/component-prop-contract#readme"
+}

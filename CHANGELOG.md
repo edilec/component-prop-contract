@@ -3,7 +3,7 @@
 All notable changes to this project are recorded here. Rule ids are part of the public
 interface: renaming one is a breaking change and gets its own entry.
 
-## Unreleased
+## 0.1.0 — 2026-10-14
 
 ### Fixed
 
@@ -90,7 +90,7 @@ Most are now pinned by the entries above. The ones that remain are recorded as w
 equivalent mutants -- the first orders identical strings, whose relative order nothing can
 observe; the second guards a branch with one call site that breaks on the value it returns.
 
-## 0.1.0
+Initial implementation:
 
 First release.
 
